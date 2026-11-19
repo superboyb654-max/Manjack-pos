@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Manjack POS Ruko Sayur Tanjungselor (Offline)</title>
+<style>
+  :root { --green:#2e7d32; --green-d:#1b5e20; --bg:#f4f7f4; --card:#ffffff; --border:#dce5dd; --text:#142016; --muted:#5b6b5e; --amber:#b45309; --red:#b91c1c; }
+  * { box-sizing: border-box; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  body { margin:0; background:var(--bg); color:var(--text); }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-variant-numeric: tabular-nums; }
+  header { background:#fff; border-bottom:1px solid var(--border); padding:10px 16px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; position:sticky; top:0; z-index:20; }
+  .brand { font-weight:700; font-size:17px; color:var(--green-d); }
+  nav { display:flex; gap:6px; flex-wrap:wrap; }
+  .tab { border:1px solid transparent; background:transparent; padding:8px 14px; border-radius:8px; font-weight:600; font-size:13px; cursor:pointer; color:var(--muted); min-height:40px; }
+  .tab.active { background:var(--green); color:#fff; }
+  main { max-width:1360px; margin:0 auto; padding:16px; }
+  .grid-pos { display:grid; grid-template-columns:1fr 380px; gap:16px; align-items:start; }
+  @media(max-width:960px){ .grid-pos { grid-template-columns:1fr; } }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:14px; }
+  .scale-box { background:#0f1f12; color:#dcfce7; border-radius:12px; padding:16px; display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; }
+  .scale-val { font-size:34px; font-weight:700; letter-spacing:-0.02em; }
+  .status-badge { display:inline-block; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700; background:#14532d; color:#bbf7d0; }
+  .status-badge.moving { background:#78350f; color:#fde68a; }
+  .btn { border:1px solid var(--border); background:#fff; color:var(--text); padding:9px 12px; border-radius:8px; font-weight:600; font-size:13px; cursor:pointer; min-height:40px; }
+  .btn:hover { background:#f0f5f0; }
+  .btn-primary { background:var(--green); color:#fff; border-color:var(--green); }
+  .btn-primary:hover { background:var(--green-d); }
+  .btn-row { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .veg-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:8px; margin-top:10px; }
+  .veg-btn { text-align:left; border:1px solid var(--border); background:#fff; border-radius:10px; padding:10px; cursor:pointer; min-height:74px; }
+  .veg-btn.selected { border-color:var(--green); background:#edf7ee; box-shadow:0 0 0 1px var(--green); }
+  .chips { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+  .chip { border:1px solid var(--border); background:#f8faf8; padding:6px 9px; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; }
+  .chip:hover { border-color:var(--green); color:var(--green-d); }
+  input, select { border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-size:13px; background:#fff; min-height:40px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:9px 8px; border-bottom:1px solid var(--border); }
+  th { font-size:12px; color:var(--muted); font-weight:600; }
+  .low-stock { color:var(--red); font-weight:700; }
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; padding:16px; z-index:50; }
+  .modal-bg.open { display:flex; }
+  .receipt { background:#fff; border:1px solid var(--border); border-radius:10px; padding:18px; max-width:360px; width:100%; font-family:ui-monospace, monospace; font-size:12px; }
+  .hidden { display:none !important; }
+  @media print { body * { visibility:hidden; } #print-target, #print-target * { visibility:visible; } #print-target { position:absolute; left:0; top:0; width:100%; } }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <div class="brand">Manjack POS — Ruko Sayur Tanjungselor</div>
+    <div style="font-size:12px;color:var(--muted)">Mode Offline Mandiri · 1 kg = 10 ons</div>
+  </div>
+  <nav>
+    <button class="tab active" onclick="switchTab('kasir', this)">Kasir</button>
+    <button class="tab" onclick="switchTab('stok', this)">Stok (&lt;5kg)</button>
+    <button class="tab" onclick="switchTab('label', this)">Label 5x3cm</button>
+    <button class="tab" onclick="switchTab('laporan', this)">Laporan Omzet</button>
+    <button class="tab" onclick="switchTab('member', this)">Member</button>
+  </nav>
+</header>
+<main>
+  <section id="tab-kasir">
+    <div class="grid-pos">
+      <div>
+        <div class="card">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <input id="barcode-input" placeholder="Scan / Ketik Kode SAY001–SAY018 + Enter" style="flex:1;min-width:220px;" onkeydown="if(event.key==='Enter') handleBarcodeInput()" />
+            <button class="btn btn-primary" onclick="handleBarcodeInput()">Scan Barcode</button>
+          </div>
+          <div class="chips" id="barcode-chips"></div>
+        </div>
+        <div class="card">
+          <div class="scale-box">
+            <div>
+              <div style="font-size:11px;color:#86efac;">TIMBANGAN DIGITAL · <span id="selected-veg-label">Pilih Sayur</span></div>
+              <div class="scale-val mono" id="scale-kg-display">0.000 kg</div>
+              <div class="mono" style="font-size:13px;color:#bbf7d0;" id="scale-ons-display">0.0 ons · Rp 0</div>
+            </div>
+            <div style="text-align:right;">
+              <div class="status-badge" id="scale-status">STABIL</div>
+              <div class="mono" style="font-size:11px;color:#86efac;margin-top:6px;" id="scale-formula">harga/kg × (ons/10)</div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <input type="number" step="0.05" min="0" id="manual-kg" placeholder="Input manual (kg)" style="width:155px;" oninput="setManualWeight(this.value)" />
+            <button class="btn" onclick="randomWeight()">Timbang Acak (0.2–2 kg)</button>
+            <button class="btn" onclick="addOns(-1)">-1 ons</button>
+            <button class="btn" onclick="addOns(1)">+1 ons</button>
+            <button class="btn" onclick="addOns(2.5)">+2.5 ons</button>
+            <button class="btn" onclick="addOns(5)">+5 ons</button>
+            <button class="btn" onclick="addOns(10)">+10 ons</button>
+            <button class="btn" onclick="setOns(0)">Nol (Tare)</button>
+          </div>
+          <div class="btn-row" style="align-items:center;justify-content:space-between;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button class="btn" onclick="setOns(2)">2 ons (Bumbu)</button>
+              <button class="btn" onclick="setOns(5)">5 ons (Setengah)</button>
+              <button class="btn" onclick="setOns(10)">10 ons (1 kg)</button>
+            </div>
+            <button class="btn btn-primary" onclick="addCurrentToCart()">+ Tambah ke Keranjang</button>
+          </div>
+        </div>
+        <div class="card">
+          <div style="font-weight:700;margin-bottom:6px;">Daftar 18 Sayur Segar (SAY001–SAY018)</div>
+          <div class="veg-grid" id="veg-grid"></div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-weight:700;font-size:15px;margin-bottom:10px;">Keranjang Kasir</div>
+        <select id="cart-member" style="width:100%;margin-bottom:10px;" onchange="renderCart()"></select>
+        <div id="cart-items" style="max-height:280px;overflow:auto;margin-bottom:10px;"></div>
+        <div style="border-top:1px solid var(--border);padding-top:10px;display:grid;gap:8px;font-size:13px;">
+          <div style="display:flex;justify-content:space-between;"><span>Subtotal</span><strong class="mono" id="cart-subtotal">Rp 0</strong></div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span style="min-width:56px;">Diskon</span>
+            <select id="discount-type" onchange="renderCart()"><option value="NOMINAL">Rp</option><option value="PERCENT">%</option></select>
+            <input type="number" id="discount-val" value="0" min="0" style="flex:1;" oninput="renderCart()" />
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:16px;"><strong>Total Bayar</strong><strong class="mono" style="color:var(--green-d)" id="cart-total">Rp 0</strong></div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-primary" id="pay-tunai-btn" style="flex:1;" onclick="setPayMethod('TUNAI')">Tunai</button>
+            <button class="btn" id="pay-qris-btn" style="flex:1;" onclick="setPayMethod('QRIS')">QRIS</button>
+          </div>
+          <div id="cash-box">
+            <input type="number" id="cash-paid" placeholder="Uang Diterima (Rp)" style="width:100%;" oninput="renderCart()" />
+            <div style="display:flex;justify-content:space-between;margin-top:6px;"><span>Kembalian</span><strong class="mono" id="cart-change">Rp 0</strong></div>
+          </div>
+          <div id="qris-box" class="hidden" style="text-align:center;padding:10px;border:1px dashed var(--border);border-radius:8px;">
+            <div style="font-weight:700;margin-bottom:4px;">Scan QRIS Manjack Ruko Sayur</div>
+            <canvas id="qris-canvas" width="130" height="130"></canvas>
+          </div>
+          <button class="btn btn-primary" style="width:100%;min-height:44px;font-size:14px;" onclick="checkout()">Bayar &amp; Cetak Struk</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-stok" class="hidden">
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <strong>Manajemen Stok Sayur (Peringatan &lt; 5 kg)</strong>
+        <span id="low-stock-summary" class="low-stock"></span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table><thead><tr><th>Kode</th><th>Nama</th><th>Harga/kg</th><th>Stok (kg)</th><th>Stok (ons)</th><th>Status</th><th>Restok</th></tr></thead><tbody id="stock-tbody"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-label" class="hidden">
+    <div class="card">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;">
+        <select id="label-veg"></select>
+        <input type="number" id="label-ons" value="5" step="0.5" min="0.5" style="width:110px;" />
+        <input type="date" id="label-exp" />
+        <select id="label-layout"><option value="2x4">Layout 2x4 (8 label)</option><option value="3x5">Layout 3x5 (15 label)</option></select>
+        <button class="btn btn-primary" onclick="downloadLabelPng()">Download PNG</button>
+      </div>
+      <canvas id="label-canvas" style="max-width:100%;border:1px solid var(--border);border-radius:8px;background:#fff;"></canvas>
+    </div>
+  </section>
+
+  <section id="tab-laporan" class="hidden">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:10px;">Laporan Omzet Harian</div>
+      <div id="omzet-summary" class="mono" style="margin-bottom:12px;font-size:14px;"></div>
+      <canvas id="chart-canvas" width="760" height="240" style="max-width:100%;border:1px solid var(--border);border-radius:8px;background:#fff;"></canvas>
+    </div>
+  </section>
+
+  <section id="tab-member" class="hidden">
+    <div class="card">
+      <div style="font-weight:700;margin-bottom:10px;">Daftar Member Ruko Sayur Tanjungselor</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+        <input id="mem-name" placeholder="Nama Member" />
+        <input id="mem-phone" placeholder="No. HP / WA" />
+        <input id="mem-disc" type="number" value="5" min="0" max="50" style="width:90px;" />
+        <button class="btn btn-primary" onclick="addMember()">Tambah Member</button>
+      </div>
+      <table><thead><tr><th>Nama</th><th>Telepon</th><th>Diskon</th><th>Total Belanja</th><th>Kunjungan</th></tr></thead><tbody id="member-tbody"></tbody></table>
+    </div>
+  </section>
+</main>
+
+<div class="modal-bg" id="receipt-modal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="receipt" id="print-target">
+    <div style="text-align:center;font-weight:700;">MANJACK RUKO SAYUR</div>
+    <div style="text-align:center;">Tanjungselor, Kalimantan Utara</div>
+    <hr style="border:none;border-top:1px dashed #999;margin:8px 0;" />
+    <div id="receipt-body"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="btn btn-primary" style="flex:1;" onclick="window.print()">Cetak</button>
+      <button class="btn" style="flex:1;" onclick="document.getElementById('receipt-modal').classList.remove('open')">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SEED = {"vegetables":[{"code":"SAY001","name":"Bayam","category":"Daun","pricePerKg":12000,"stockKg":14.5,"shelfLifeDays":2},{"code":"SAY002","name":"Kangkung","category":"Daun","pricePerKg":10000,"stockKg":18,"shelfLifeDays":2},{"code":"SAY003","name":"Sawi","category":"Daun","pricePerKg":14000,"stockKg":11.2,"shelfLifeDays":3},{"code":"SAY004","name":"Wortel","category":"Umbi","pricePerKg":18000,"stockKg":22,"shelfLifeDays":10},{"code":"SAY005","name":"Kentang","category":"Umbi","pricePerKg":20000,"stockKg":30.5,"shelfLifeDays":14},{"code":"SAY006","name":"Tomat","category":"Buah","pricePerKg":16000,"stockKg":12.8,"shelfLifeDays":5},{"code":"SAY007","name":"Cabe Rawit","category":"Bumbu","pricePerKg":65000,"stockKg":4.2,"shelfLifeDays":6},{"code":"SAY008","name":"Cabe Merah","category":"Bumbu","pricePerKg":48000,"stockKg":6.5,"shelfLifeDays":6},{"code":"SAY009","name":"Bawang Merah","category":"Bumbu","pricePerKg":42000,"stockKg":15,"shelfLifeDays":21},{"code":"SAY010","name":"Bawang Putih","category":"Bumbu","pricePerKg":40000,"stockKg":19.4,"shelfLifeDays":30},{"code":"SAY011","name":"Jahe","category":"Rempah","pricePerKg":32000,"stockKg":3.8,"shelfLifeDays":21},{"code":"SAY012","name":"Kunyit","category":"Rempah","pricePerKg":24000,"stockKg":4.6,"shelfLifeDays":21},{"code":"SAY013","name":"Kol","category":"Daun","pricePerKg":13000,"stockKg":16,"shelfLifeDays":7},{"code":"SAY014","name":"Timun","category":"Buah","pricePerKg":11000,"stockKg":13.5,"shelfLifeDays":5},{"code":"SAY015","name":"Terong","category":"Buah","pricePerKg":15000,"stockKg":9,"shelfLifeDays":5},{"code":"SAY016","name":"Daun Bawang","category":"Daun","pricePerKg":28000,"stockKg":3.2,"shelfLifeDays":3},{"code":"SAY017","name":"Seledri","category":"Daun","pricePerKg":35000,"stockKg":2.4,"shelfLifeDays":3},{"code":"SAY018","name":"Kemangi","category":"Daun","pricePerKg":30000,"stockKg":1.8,"shelfLifeDays":2}],"transactions":[{"id":"seed-tx-1","invoiceNo":"MJ-20261113-001","timestamp":"2026-11-13T01:25:00.000Z","dateKey":"2026-11-13","items":[{"id":"seed-item-1","code":"SAY007","name":"Cabe Rawit","pricePerKg":65000,"weightKg":1.5,"weightOns":15,"subtotal":645000}],"subtotal":645000,"discountType":"NOMINAL","discountValue":0,"discountAmount":0,"total":645000,"paymentMethod":"TUNAI","cashPaid":645000,"changeAmount":0,"memberName":"Warung Makan Sederhana"},{"id":"seed-tx-2","invoiceNo":"MJ-20261114-002","timestamp":"2026-11-14T02:25:00.000Z","dateKey":"2026-11-14","items":[{"id":"seed-item-2","code":"SAY009","name":"Bawang Merah","pricePerKg":42000,"weightKg":2,"weightOns":20,"subtotal":782000}],"subtotal":782000,"discountType":"NOMINAL","discountValue":0,"discountAmount":0,"total":782000,"paymentMethod":"QRIS","cashPaid":782000,"changeAmount":0},{"id":"seed-tx-3","invoiceNo":"MJ-20261115-003","timestamp":"2026-11-15T03:25:00.000Z","dateKey":"2026-11-15","items":[{"id":"seed-item-3","code":"SAY005","name":"Kentang","pricePerKg":20000,"weightKg":3,"weightOns":30,"subtotal":590000}],"subtotal":590000,"discountType":"NOMINAL","discountValue":0,"discountAmount":0,"total":590000,"paymentMethod":"TUNAI","cashPaid":590000,"changeAmount":0,"memberName":"Warung Makan Sederhana"},{"id":"seed-tx-4","invoiceNo":"MJ-20261116-004","timestamp":"2026-11-16T04:25:00.000Z","dateKey":"2026-11-16","items":[{"id":"seed-item-4","code":"SAY008","name":"Cabe Merah","pricePerKg":48000,"weightKg":2.5,"weightOns":25,"subtotal":915000}],"subtotal":915000,"discountType":"NOMINAL","discountValue":0,"discountAmount":0,"total":915000,"paymentMethod":"QRIS","cashPaid":915000,"changeAmount":0},{"id":"seed-tx-5","invoiceNo":"MJ-20261117-005","timestamp":"2026-11-17T05:25:00.000Z","dateKey":"2026-11-17","items":[{"id":"seed-item-5","code":"SAY010","name":"Bawang Putih","pricePerKg":40000,"weightKg":2.2,"weightOns":22,"subtotal":840000}],"subtotal":840000,"discountType":"NOMINAL","discountValue":0,"discountAmount":0,"total":840000,"paymentMethod":"TUNAI","cashPaid":840000,"changeAmount":0,"memberName":"Warung Makan Sederhana"},{"id":"seed-tx-6","invoiceNo":"MJ-20261118-006","timestamp":"2026-11-18T06:25:00.000Z","dateKey":"2026-11-18","items":[{"id":"seed-item-6","code":"SAY004","name":"Wortel","pricePerKg":18000,"weightKg":4,"weightOns":40,"subtotal":1025000}],"subtotal":1025000,"discountType":"NOMINAL","discountValue":0,"discountAmount":0,"total":1025000,"paymentMethod":"QRIS","cashPaid":1025000,"changeAmount":0}],"members":[{"id":"mem-1","name":"Ibu Sari Rahayu","phone":"0812-5401-2210","address":"Jl. Sengkawit, Tanjungselor","discountPercent":5,"totalSpent":485000,"visitCount":12,"points":48,"joinedDate":"2026-08-12"},{"id":"mem-2","name":"Warung Makan Sederhana","phone":"0852-4788-9012","address":"Pasar Induk Tanjungselor","discountPercent":8,"totalSpent":1940000,"visitCount":28,"points":194,"joinedDate":"2026-06-03"},{"id":"mem-3","name":"Pak Budi Santoso","phone":"0813-4822-1177","address":"Jl. Sabanar Lama, Tanjungselor","discountPercent":3,"totalSpent":268000,"visitCount":7,"points":26,"joinedDate":"2026-09-18"},{"id":"mem-4","name":"Kedai Borneo","phone":"0821-5390-4455","address":"Jl. Katamso, Tanjungselor","discountPercent":5,"totalSpent":875000,"visitCount":15,"points":87,"joinedDate":"2026-07-24"},{"id":"mem-5","name":"Ibu Aminah","phone":"0853-4910-7762","address":"Jl. Skip II, Tanjungselor","discountPercent":5,"totalSpent":342000,"visitCount":9,"points":34,"joinedDate":"2026-10-05"}]};
+const STORE_KEY = 'manjack_pos_offline_html_v1';
+let state = JSON.parse(localStorage.getItem(STORE_KEY) || 'null') || SEED;
+let selectedCode = state.vegetables[0]?.code || 'SAY001';
+let currentKg = 0.5;
+let cart = [];
+let payMethod = 'TUNAI';
+let audioCtx = null;
+
+function saveState(){ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+function rp(n){ return 'Rp ' + Math.round(n).toLocaleString('id-ID'); }
+function beep(){
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'square'; o.frequency.value = 1600;
+    g.gain.setValueAtTime(0.06, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+    o.connect(g); g.connect(audioCtx.destination); o.start(); o.stop(audioCtx.currentTime + 0.11);
+  } catch(e){}
+}
+
+function switchTab(id, btn){
+  document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
+  document.getElementById('tab-'+id).classList.remove('hidden');
+  document.querySelectorAll('nav .tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if(id==='stok') renderStock();
+  if(id==='label') renderLabelPreview();
+  if(id==='laporan') renderReport();
+  if(id==='member') renderMembers();
+}
+
+function updateScaleDisplay(moving){
+  const veg = state.vegetables.find(v => v.code === selectedCode) || state.vegetables[0];
+  const ons = Math.round(currentKg * 10 * 100) / 100;
+  const price = Math.round(veg.pricePerKg * (ons / 10));
+  document.getElementById('selected-veg-label').textContent = veg.code + ' · ' + veg.name + ' (' + rp(veg.pricePerKg) + '/kg)';
+  document.getElementById('scale-kg-display').textContent = currentKg.toFixed(3) + ' kg';
+  document.getElementById('scale-ons-display').textContent = ons.toFixed(1) + ' ons · ' + rp(price);
+  document.getElementById('scale-formula').textContent = rp(veg.pricePerKg) + '/kg × (' + ons.toFixed(1) + ' ons / 10) = ' + rp(price);
+  const st = document.getElementById('scale-status');
+  if(moving){ st.textContent = 'MENIMBANG...'; st.classList.add('moving'); setTimeout(() => { st.textContent = 'STABIL'; st.classList.remove('moving'); }, 320); }
+  else { st.textContent = 'STABIL'; st.classList.remove('moving'); }
+}
+
+function setOns(ons){ currentKg = Math.max(0, Math.round((ons / 10) * 1000) / 1000); document.getElementById('manual-kg').value = currentKg.toFixed(3); updateScaleDisplay(true); }
+function addOns(delta){ const ons = Math.max(0, Math.round((currentKg * 10 + delta) * 100) / 100); setOns(ons); }
+function setManualWeight(v){ currentKg = Math.max(0, parseFloat(v) || 0); updateScaleDisplay(true); }
+function randomWeight(){ currentKg = Math.round((0.2 + Math.random() * 1.8) * 1000) / 1000; document.getElementById('manual-kg').value = currentKg.toFixed(3); updateScaleDisplay(true); }
+
+function selectVeg(code, shouldBeep){
+  selectedCode = code;
+  if(shouldBeep) beep();
+  renderVegGrid();
+  updateScaleDisplay(false);
+}
+
+function handleBarcodeInput(){
+  const inp = document.getElementById('barcode-input');
+  const code = inp.value.trim().toUpperCase();
+  const veg = state.vegetables.find(v => v.code === code);
+  if(veg){ selectVeg(veg.code, true); if(currentKg <= 0) setOns(5); addCurrentToCart(); inp.value=''; }
+}
+
+function addCurrentToCart(){
+  if(currentKg <= 0) return;
+  const veg = state.vegetables.find(v => v.code === selectedCode);
+  if(!veg) return;
+  const ons = Math.round(currentKg * 10 * 100) / 100;
+  const sub = Math.round(veg.pricePerKg * (ons / 10));
+  cart.push({ id: Date.now() + Math.random(), code: veg.code, name: veg.name, pricePerKg: veg.pricePerKg, weightKg: currentKg, weightOns: ons, subtotal: sub });
+  beep();
+  renderCart();
+}
+
+function renderVegGrid(){
+  const grid = document.getElementById('veg-grid');
+  const chips = document.getElementById('barcode-chips');
+  grid.innerHTML = state.vegetables.map(v => `<button class="veg-btn ${v.code===selectedCode?'selected':''}" onclick="selectVeg('${v.code}', true)"><div class="mono" style="font-size:11px;color:var(--green-d);font-weight:700;">${v.code}</div><div style="font-weight:700;font-size:14px;margin:2px 0;">${v.name}</div><div class="mono" style="font-size:12px;">${rp(v.pricePerKg)}/kg</div><div style="font-size:11px;color:${v.stockKg<5?'var(--red)':'var(--muted)'}">Stok: ${v.stockKg.toFixed(1)} kg ${v.stockKg<5?'(Menipis)':''}</div></button>`).join('');
+  chips.innerHTML = state.vegetables.map(v => `<button class="chip mono" onclick="selectVeg('${v.code}', true)">${v.code}</button>`).join('');
+}
+
+function setPayMethod(m){
+  payMethod = m;
+  document.getElementById('pay-tunai-btn').className = m==='TUNAI' ? 'btn btn-primary' : 'btn';
+  document.getElementById('pay-qris-btn').className = m==='QRIS' ? 'btn btn-primary' : 'btn';
+  document.getElementById('cash-box').classList.toggle('hidden', m!=='TUNAI');
+  document.getElementById('qris-box').classList.toggle('hidden', m!=='QRIS');
+  renderCart();
+}
+
+function renderCart(){
+  const sel = document.getElementById('cart-member');
+  if(!sel.options.length){
+    sel.innerHTML = '<option value="">Pelanggan Umum (Non-Member)</option>' + state.members.map(m => `<option value="${m.id}">${m.name} (Diskon ${m.discountPercent}%)</option>`).join('');
+  }
+  const box = document.getElementById('cart-items');
+  box.innerHTML = cart.length ? cart.map((c,i) => `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;"><div><strong>${c.name}</strong> (${c.code})<div class="mono">${c.weightKg.toFixed(3)} kg · ${c.weightOns.toFixed(1)} ons</div></div><div style="text-align:right;"><strong class="mono">${rp(c.subtotal)}</strong><br><button class="btn" style="padding:2px 7px;min-height:24px;font-size:11px;" onclick="cart.splice(${i},1);renderCart()">Hapus</button></div></div>`).join('') : '<div style="color:var(--muted);font-size:13px;padding:12px 0;">Keranjang masih kosong.</div>';
+  const sub = cart.reduce((s,i)=>s+i.subtotal,0);
+  const dt = document.getElementById('discount-type').value;
+  const dv = parseFloat(document.getElementById('discount-val').value)||0;
+  const disc = dt==='PERCENT' ? Math.round(sub * Math.min(100,dv)/100) : Math.min(sub, dv);
+  const tot = Math.max(0, sub - disc);
+  const paid = parseFloat(document.getElementById('cash-paid').value)||0;
+  document.getElementById('cart-subtotal').textContent = rp(sub);
+  document.getElementById('cart-total').textContent = rp(tot);
+  document.getElementById('cart-change').textContent = rp(Math.max(0, paid - tot));
+  if(payMethod==='QRIS'){
+    const c = document.getElementById('qris-canvas'), ctx = c.getContext('2d');
+    ctx.fillStyle='#fff'; ctx.fillRect(0,0,130,130); ctx.fillStyle='#142016';
+    for(let r=0;r<13;r++) for(let col=0;col<13;col++) if((r+col+tot)%2===0 || (r<3&&col<3) || (r<3&&col>9) || (r>9&&col<3)) ctx.fillRect(10+col*8.5,10+r*8.5,7.5,7.5);
+  }
+}
+
+function checkout(){
+  if(!cart.length) return;
+  const sub = cart.reduce((s,i)=>s+i.subtotal,0);
+  const dt = document.getElementById('discount-type').value;
+  const dv = parseFloat(document.getElementById('discount-val').value)||0;
+  const disc = dt==='PERCENT' ? Math.round(sub * Math.min(100,dv)/100) : Math.min(sub, dv);
+  const tot = Math.max(0, sub - disc);
+  const paid = payMethod==='QRIS' ? tot : Math.max(tot, parseFloat(document.getElementById('cash-paid').value)||tot);
+  const dateKey = new Date().toISOString().slice(0,10);
+  const tx = { id:'tx-'+Date.now(), invoiceNo:'MJ-'+Date.now().toString().slice(-6), timestamp:new Date().toISOString(), dateKey, items:[...cart], subtotal:sub, discountAmount:disc, total:tot, paymentMethod:payMethod, cashPaid:paid, changeAmount:paid-tot };
+  cart.forEach(item => { const v = state.vegetables.find(x=>x.code===item.code); if(v) v.stockKg = Math.max(0, Math.round((v.stockKg - item.weightKg)*1000)/1000); });
+  state.transactions.unshift(tx);
+  saveState();
+  document.getElementById('receipt-body').innerHTML = `<div>No: ${tx.invoiceNo}</div><div>Tgl: ${new Date(tx.timestamp).toLocaleString('id-ID')}</div><hr style="border:none;border-top:1px dashed #999;margin:6px 0;" />` + tx.items.map(i=>`<div>${i.name} (${i.code})<br>${i.weightKg.toFixed(3)} kg / ${i.weightOns.toFixed(1)} ons = ${rp(i.subtotal)}</div>`).join('') + `<hr style="border:none;border-top:1px dashed #999;margin:6px 0;" /><div>Subtotal: ${rp(tx.subtotal)}</div><div>Diskon: -${rp(tx.discountAmount)}</div><div><strong>TOTAL: ${rp(tx.total)}</strong></div><div>Bayar (${tx.paymentMethod}): ${rp(tx.cashPaid)}</div><div>Kembali: ${rp(tx.changeAmount)}</div>`;
+  document.getElementById('receipt-modal').classList.add('open');
+  cart = []; renderCart(); renderVegGrid();
+}
+
+function renderStock(){
+  const low = state.vegetables.filter(v=>v.stockKg<5).length;
+  document.getElementById('low-stock-summary').textContent = low + ' item stok < 5 kg';
+  document.getElementById('stock-tbody').innerHTML = state.vegetables.map(v=>`<tr><td class="mono">${v.code}</td><td><strong>${v.name}</strong></td><td class="mono">${rp(v.pricePerKg)}</td><td class="mono">${v.stockKg.toFixed(2)} kg</td><td class="mono">${(v.stockKg*10).toFixed(1)} ons</td><td class="${v.stockKg<5?'low-stock':''}">${v.stockKg<5?'Stok Menipis (&lt;5 kg)':'Aman'}</td><td><button class="btn" onclick="restock('${v.code}',5)">+5 kg</button></td></tr>`).join('');
+}
+function restock(code, amt){ const v=state.vegetables.find(x=>x.code===code); if(v){ v.stockKg+=amt; saveState(); renderStock(); renderVegGrid(); } }
+
+function renderLabelPreview(){
+  const sel = document.getElementById('label-veg');
+  if(!sel.options.length) sel.innerHTML = state.vegetables.map(v=>`<option value="${v.code}">${v.code} - ${v.name}</option>`).join('');
+  if(!document.getElementById('label-exp').value){ const d=new Date(); d.setDate(d.getDate()+3); document.getElementById('label-exp').value=d.toISOString().slice(0,10); }
+  const veg = state.vegetables.find(v=>v.code===sel.value) || state.vegetables[0];
+  const ons = parseFloat(document.getElementById('label-ons').value)||5;
+  const layout = document.getElementById('label-layout').value;
+  const cols = layout==='2x4'?2:3, rows = layout==='2x4'?4:5;
+  const c = document.getElementById('label-canvas'); c.width = cols*300; c.height = rows*180;
+  const ctx = c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height);
+  for(let r=0;r<rows;r++) for(let col=0;col<cols;col++){
+    const x=col*300+8, y=r*180+8, w=284, h=164;
+    ctx.strokeStyle='#cbd5e1'; ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle='#2e7d32'; ctx.fillRect(x,y,w,26);
+    ctx.fillStyle='#fff'; ctx.font='bold 12px sans-serif'; ctx.fillText('MANJACK SAYUR TANJUNGSELOR', x+10, y+17);
+    ctx.fillStyle='#142016'; ctx.font='bold 16px sans-serif'; ctx.fillText(veg.name + ' ('+veg.code+')', x+10, y+48);
+    ctx.font='bold 14px monospace'; ctx.fillText((ons/10).toFixed(3)+' kg / '+ons+' ons · '+rp(veg.pricePerKg*(ons/10)), x+10, y+70);
+    ctx.font='11px monospace'; ctx.fillText('EXP: '+document.getElementById('label-exp').value, x+10, y+90);
+    for(let b=0;b<34;b++){ ctx.fillStyle=b%2===0?'#000':'#fff'; ctx.fillRect(x+10+b*5, y+104, (b%3)+2, 42); }
+    for(let qr=0;qr<8;qr++) for(let qc=0;qc<8;qc++){ ctx.fillStyle=(qr+qc)%2===0?'#000':'#fff'; ctx.fillRect(x+212+qc*7, y+96+qr*7, 6, 6); }
+  }
+}
+function downloadLabelPng(){ renderLabelPreview(); const a=document.createElement('a'); a.download='label-manjack-5x3cm.png'; a.href=document.getElementById('label-canvas').toDataURL('image/png'); a.click(); }
+
+function renderReport(){
+  const today = new Date().toISOString().slice(0,10);
+  const todayTot = state.transactions.filter(t=>t.dateKey===today).reduce((s,t)=>s+t.total,0);
+  document.getElementById('omzet-summary').textContent = 'Omzet Hari Ini: ' + rp(todayTot) + ' · Total Transaksi: ' + state.transactions.length;
+  const c = document.getElementById('chart-canvas'), ctx = c.getContext('2d');
+  ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height);
+  const days = [];
+  for(let i=6;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); const k=d.toISOString().slice(0,10); days.push({ k:k.slice(5), val: state.transactions.filter(t=>t.dateKey===k).reduce((s,t)=>s+t.total,0) }); }
+  const max = Math.max(100000, ...days.map(d=>d.val));
+  days.forEach((d,idx)=>{
+    const bh = Math.round((d.val/max)*150), x = 45+idx*100, y = 190-bh;
+    ctx.fillStyle='#2e7d32'; ctx.fillRect(x,y,52,bh);
+    ctx.fillStyle='#142016'; ctx.font='11px monospace'; ctx.fillText(d.k, x+8, 212);
+    ctx.fillText(Math.round(d.val/1000)+'k', x+8, Math.max(16,y-6));
+  });
+}
+
+function renderMembers(){
+  document.getElementById('member-tbody').innerHTML = state.members.map(m=>`<tr><td><strong>${m.name}</strong></td><td class="mono">${m.phone}</td><td class="mono">${m.discountPercent}%</td><td class="mono">${rp(m.totalSpent)}</td><td class="mono">${m.visitCount}x</td></tr>`).join('');
+}
+function addMember(){
+  const n = document.getElementById('mem-name').value.trim(); if(!n) return;
+  state.members.unshift({ id:'m-'+Date.now(), name:n, phone:document.getElementById('mem-phone').value||'-', discountPercent:parseFloat(document.getElementById('mem-disc').value)||0, totalSpent:0, visitCount:0 });
+  saveState(); renderMembers();
+}
+
+renderVegGrid(); updateScaleDisplay(false); renderCart();
+</script>
+</body>
+</html>
